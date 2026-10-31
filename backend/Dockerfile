@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: resolve dependencies into a virtualenv with uv ------------------
-FROM ghcr.io/astral-sh/uv:0.12.17-python3.12-bookworm-slim AS build
+FROM ghcr.io/astral-sh/uv:0.13.6-python3.12-trixie-slim AS build
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # ---- runtime: slim image with the virtualenv and the app package -----------
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12-slim-trixie AS runtime
 
 ENV PATH="/srv/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

@@ -4,9 +4,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from researchpilot.api.deps import get_service, require_configured
-from researchpilot.api.schemas import ResearchJob, ResumeResearchRequest, StartResearchRequest
-from researchpilot.services.research import (
+from app.api.deps import get_service, require_configured
+from app.schemas.research import ResearchJob, ResumeResearchRequest, StartResearchRequest
+from app.services.research import (
     ResearchCapacityError,
     ResearchConflictError,
     ResearchNotFoundError,

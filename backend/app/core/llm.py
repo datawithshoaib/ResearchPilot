@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from langchain_groq import ChatGroq
 
-from researchpilot.core.config import get_settings
+from app.core.config import get_settings
 
 
 @lru_cache(maxsize=1)

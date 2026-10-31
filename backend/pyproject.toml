@@ -16,9 +16,6 @@ dependencies = [
     "uvicorn[standard]>=0.53.0",
 ]
 
-[project.scripts]
-researchpilot-api = "researchpilot.api.app:run"
-
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
@@ -27,12 +24,13 @@ dev = [
     "ruff>=0.14.0",
 ]
 
-[build-system]
-requires = ["uv_build>=0.12.17,<0.13.0"]
-build-backend = "uv_build"
+# `app/` is run in place (uvicorn app.main:app), not built and installed as a package.
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 110
@@ -42,4 +40,4 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/researchpilot/prompts.py" = ["E501"]
+"app/graph/prompts.py" = ["E501"]

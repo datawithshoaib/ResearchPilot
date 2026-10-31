@@ -1,4 +1,4 @@
-"""Request and response models for the HTTP API."""
+"""Request and response models for the research endpoints."""
 
 from datetime import datetime
 from enum import StrEnum
@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from researchpilot.models import Analyst
+from app.graph.models import Analyst
 
 
 class JobStatus(StrEnum):
@@ -32,15 +32,6 @@ class StartResearchRequest(BaseModel):
 
 class ResumeResearchRequest(BaseModel):
     feedback: str | None = Field(default=None, max_length=4000)
-
-
-class HealthResponse(BaseModel):
-    status: str
-    version: str
-    configured: bool
-    missing: list[str]
-    model: str
-    active_jobs: int
 
 
 class Source(BaseModel):

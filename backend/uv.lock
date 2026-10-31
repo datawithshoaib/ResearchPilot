@@ -2070,7 +2070,7 @@ wheels = [
 [[package]]
 name = "researchpilot"
 version = "0.2.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "langchain" },

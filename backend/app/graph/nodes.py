@@ -8,10 +8,10 @@ from langchain.messages import HumanMessage, SystemMessage
 from langchain_core.messages import get_buffer_string
 from langgraph.types import interrupt
 
-from researchpilot.core.llm import get_llm
-from researchpilot.graph.events import emit, preview
-from researchpilot.models import Analyst, Perspectives
-from researchpilot.prompts import (
+from app.core.llm import get_llm
+from app.graph.events import emit, preview
+from app.graph.models import Analyst, Perspectives
+from app.graph.prompts import (
     analyst_instructions,
     answer_instructions,
     intro_conclusion_instructions,
@@ -19,7 +19,7 @@ from researchpilot.prompts import (
     report_writer_instructions,
     section_writer_instructions,
 )
-from researchpilot.state import GenerateAnalystsState, InterviewState, ResearchGraphState
+from app.graph.state import GenerateAnalystsState, InterviewState, ResearchGraphState
 
 APPROVAL_RESPONSES = {"", "perfect", "continue", "approved", "yes", "looks good", "lgtm"}
 

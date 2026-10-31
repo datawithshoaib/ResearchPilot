@@ -7,7 +7,7 @@ from typing import Literal
 from langchain.messages import AIMessage, HumanMessage
 from langgraph.types import Send
 
-from researchpilot.state import GenerateAnalystsState, InterviewState, ResearchGraphState
+from app.graph.state import GenerateAnalystsState, InterviewState, ResearchGraphState
 
 
 def should_continue(state: GenerateAnalystsState) -> Literal["create_analysts", "dummy"]:

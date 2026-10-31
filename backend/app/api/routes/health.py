@@ -2,11 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from researchpilot import __version__
-from researchpilot.api.deps import get_service
-from researchpilot.api.schemas import HealthResponse
-from researchpilot.core.config import get_settings
-from researchpilot.services.research import ResearchService
+from app import __version__
+from app.api.deps import get_service
+from app.core.config import get_settings
+from app.schemas.health import HealthResponse
+from app.services.research import ResearchService
 
 router = APIRouter(tags=["health"])
 

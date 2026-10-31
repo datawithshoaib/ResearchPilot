@@ -9,7 +9,7 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # `backend/` — resolved so `.env` is found no matter where the process starts.
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ENV_FILES = (BACKEND_ROOT / ".env", Path(".env"))
 
 # LangChain integrations and LangSmith tracing read credentials straight from

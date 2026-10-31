@@ -98,7 +98,7 @@ def test_stream_emits_job_events_until_terminal(client):
 
 
 def test_rate_limit_errors_are_explained(client, monkeypatch):
-    from researchpilot.graph import nodes
+    from app.graph import nodes
 
     class RateLimitError(Exception):
         pass

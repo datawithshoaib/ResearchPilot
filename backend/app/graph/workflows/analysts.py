@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from langgraph.graph import END, START, StateGraph
 
-from researchpilot.graph.edges import should_continue
-from researchpilot.graph.nodes import create_analysts, dummy, human_feedback
-from researchpilot.state import GenerateAnalystsState
+from app.graph.edges import should_continue
+from app.graph.nodes import create_analysts, dummy, human_feedback
+from app.graph.state import GenerateAnalystsState
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver

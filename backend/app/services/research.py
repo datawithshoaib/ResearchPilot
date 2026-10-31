@@ -14,7 +14,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import Command
 
-from researchpilot.api.schemas import (
+from app.graph.models import Analyst
+from app.graph.workflows.research import build_graph
+from app.schemas.research import (
     ActivityEvent,
     AnalystProgress,
     JobStatus,
@@ -22,8 +24,6 @@ from researchpilot.api.schemas import (
     Source,
     StartResearchRequest,
 )
-from researchpilot.graph.research import build_graph
-from researchpilot.models import Analyst
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def _as_analysts(raw: Any) -> list[Analyst]:
 def _build_checkpointer() -> InMemorySaver:
     """Allow the checkpoint serializer to round-trip domain models."""
 
-    serde = JsonPlusSerializer(allowed_msgpack_modules=[("researchpilot.models", "Analyst")])
+    serde = JsonPlusSerializer(allowed_msgpack_modules=[("app.graph.models", "Analyst")])
     return InMemorySaver(serde=serde)
 
 

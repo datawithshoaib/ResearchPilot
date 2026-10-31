@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 
 from langgraph.graph import END, START, StateGraph
 
-from researchpilot.graph.edges import route_messages
-from researchpilot.graph.nodes import (
+from app.graph.edges import route_messages
+from app.graph.nodes import (
     generate_answer,
     generate_question,
     save_interview,
     write_section,
 )
-from researchpilot.graph.tools import search_web
-from researchpilot.state import InterviewState
+from app.graph.state import InterviewState
+from app.graph.tools import search_web
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver

@@ -25,12 +25,14 @@ While the interviews run, graph nodes emit progress events that the API streams 
 ```text
 ResearchPilot/
 ├── backend/                     FastAPI + LangGraph service  → deployed to Render
-│   ├── src/researchpilot/
-│   │   ├── api/                 app factory, routes (health, research), schemas, deps
+│   ├── app/
+│   │   ├── main.py              FastAPI app factory (`app.main:app`)
+│   │   ├── api/                 router, dependencies, routes (health, research)
+│   │   ├── schemas/             HTTP request/response models
 │   │   ├── services/            ResearchService: job lifecycle, streaming, cancel, TTL
-│   │   ├── graph/               analyst / interview / research graphs, nodes, events
-│   │   ├── core/                settings, LLM factory, logging
-│   │   ├── models.py, state.py, prompts.py
+│   │   ├── graph/               LangGraph: models, state, prompts, nodes, edges, tools, events
+│   │   │   └── workflows/       compiled graphs: analysts, interview, research
+│   │   └── core/                settings, LLM factory, logging
 │   ├── tests/                   API tests against the real graph with a fake LLM
 │   ├── Dockerfile               production image (uv, non-root, single worker)
 │   ├── langgraph.json           LangGraph Studio registration
@@ -71,7 +73,7 @@ ResearchPilot/
 cd backend
 cp .env.example .env          # add GROQ_API_KEY and TAVILY_API_KEY
 uv sync
-uv run uvicorn researchpilot.api.app:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000   # or: uv run python -m app
 
 # 2. Frontend (second terminal)
 cd frontend
@@ -80,7 +82,7 @@ npm install
 npm run dev                   # http://localhost:3000
 ```
 
-To start both at once from the repo root, run `uv run --project backend run.py`.
+To start both at once from the repo root, run `python run.py` (add `--backend-only` or `--frontend-only` to start one). It only needs `uv` and `npm` on your PATH.
 
 | Task | Command |
 |---|---|

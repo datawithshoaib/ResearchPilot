@@ -2,8 +2,8 @@
 
 from fastapi import HTTPException, Request, status
 
-from researchpilot.core.config import Settings, get_settings
-from researchpilot.services.research import ResearchService
+from app.core.config import Settings, get_settings
+from app.services.research import ResearchService
 
 
 def get_service(request: Request) -> ResearchService:

@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING
 
 from langgraph.graph import END, START, StateGraph
 
-from researchpilot.graph.edges import initiate_all_interviews
-from researchpilot.graph.interview import interview_graph
-from researchpilot.graph.nodes import (
+from app.graph.edges import initiate_all_interviews
+from app.graph.nodes import (
     create_analysts,
     finalize_report,
     human_feedback,
@@ -16,7 +15,8 @@ from researchpilot.graph.nodes import (
     write_introduction,
     write_report,
 )
-from researchpilot.state import ResearchGraphState
+from app.graph.state import ResearchGraphState
+from app.graph.workflows.interview import interview_graph
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver

@@ -3,15 +3,15 @@
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from researchpilot import __version__
-from researchpilot.api.routes import health, research
-from researchpilot.core.config import get_settings
-from researchpilot.core.logging import configure_logging
-from researchpilot.services.research import ResearchService
+from app import __version__
+from app.api.router import api_router
+from app.core.config import get_settings
+from app.core.logging import configure_logging
+from app.services.research import ResearchService
 
 
 def create_app(service: ResearchService | None = None) -> FastAPI:
@@ -51,10 +51,7 @@ def create_app(service: ResearchService | None = None) -> FastAPI:
     # SSE responses are excluded from gzip by Starlette, so streaming is unaffected.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-    api = APIRouter(prefix="/api")
-    api.include_router(health.router)
-    api.include_router(research.router)
-    app.include_router(api)
+    app.include_router(api_router)
 
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:
@@ -64,16 +61,3 @@ def create_app(service: ResearchService | None = None) -> FastAPI:
 
 
 app = create_app()
-
-
-def run() -> None:
-    import os
-
-    import uvicorn
-
-    uvicorn.run(
-        "researchpilot.api.app:app",
-        host=os.environ.get("HOST", "127.0.0.1"),
-        port=int(os.environ.get("PORT", "8000")),
-        reload=get_settings().environment == "development",
-    )

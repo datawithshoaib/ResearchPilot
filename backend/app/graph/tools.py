@@ -5,12 +5,12 @@ from functools import lru_cache
 from langchain.messages import SystemMessage
 from langchain_tavily import TavilySearch
 
-from researchpilot.core.config import get_settings
-from researchpilot.core.llm import get_llm
-from researchpilot.graph.events import emit
-from researchpilot.models import Analyst, SearchQuery
-from researchpilot.prompts import search_instructions
-from researchpilot.state import InterviewState
+from app.core.config import get_settings
+from app.core.llm import get_llm
+from app.graph.events import emit
+from app.graph.models import Analyst, SearchQuery
+from app.graph.prompts import search_instructions
+from app.graph.state import InterviewState
 
 
 @lru_cache(maxsize=1)

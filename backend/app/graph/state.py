@@ -6,7 +6,7 @@ from typing import Annotated, NotRequired
 from langgraph.graph import MessagesState
 from typing_extensions import TypedDict
 
-from researchpilot.models import Analyst
+from app.graph.models import Analyst
 
 
 def _keep_max(left: int, right: int) -> int:

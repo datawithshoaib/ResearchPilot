@@ -13,10 +13,10 @@ os.environ.setdefault("TAVILY_API_KEY", "test-tavily-key")
 from fastapi.testclient import TestClient  # noqa: E402
 from langchain_core.messages import AIMessage  # noqa: E402
 
-from researchpilot.api.app import create_app  # noqa: E402
-from researchpilot.graph import nodes, tools  # noqa: E402
-from researchpilot.models import Analyst, Perspectives, SearchQuery  # noqa: E402
-from researchpilot.services.research import ResearchService  # noqa: E402
+from app.graph import nodes, tools  # noqa: E402
+from app.graph.models import Analyst, Perspectives, SearchQuery  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.services.research import ResearchService  # noqa: E402
 
 
 class _Structured:

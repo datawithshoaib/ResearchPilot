@@ -1,9 +1,9 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "create_analysts": "./src/researchpilot/graph/analysts.py:graph",
-    "answer_question": "./src/researchpilot/graph/interview.py:question_answer_graph",
-    "deep_agent": "./src/researchpilot/graph/research.py:graph"
+    "create_analysts": "./app/graph/workflows/analysts.py:graph",
+    "answer_question": "./app/graph/workflows/interview.py:question_answer_graph",
+    "deep_agent": "./app/graph/workflows/research.py:graph"
   },
   "env": ".env"
 }

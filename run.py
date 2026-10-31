@@ -1,4 +1,9 @@
-"""Start the ResearchPilot API and web frontend with a single command."""
+"""Start the ResearchPilot API and web frontend with a single command (local development).
+
+    uv run --project backend run.py              # both
+    uv run --project backend run.py --backend-only
+    uv run --project backend run.py --frontend-only
+"""
 
 from __future__ import annotations
 
@@ -11,8 +16,9 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SRC_DIR = ROOT / "src"
-WEB_DIR = ROOT / "web"
+BACKEND_DIR = ROOT / "backend"
+SRC_DIR = BACKEND_DIR / "src"
+WEB_DIR = ROOT / "frontend"
 BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = int(os.environ.get("API_PORT", "8000"))
 FRONTEND_PORT = int(os.environ.get("WEB_PORT", "3000"))
@@ -27,7 +33,7 @@ def _backend_env() -> dict[str, str]:
 
 def _frontend_env() -> dict[str, str]:
     env = os.environ.copy()
-    if BACKEND_PORT != 8000 and "NEXT_PUBLIC_API_URL" not in env:
+    if "NEXT_PUBLIC_API_URL" not in env:
         env["NEXT_PUBLIC_API_URL"] = f"http://localhost:{BACKEND_PORT}"
     return env
 
@@ -73,7 +79,7 @@ def run_backend(reload: bool, frontend: subprocess.Popen[bytes] | None) -> None:
     try:
         import uvicorn
     except ImportError:
-        sys.exit("uvicorn is not installed. Run `uv sync` and then `uv run run.py`.")
+        sys.exit("uvicorn is not installed. Run `uv sync --project backend` first.")
 
     config = uvicorn.Config(
         "researchpilot.api.app:app",

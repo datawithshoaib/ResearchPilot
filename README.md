@@ -1,283 +1,158 @@
 # ResearchPilot
 
-> A multi-agent research workflow that creates analyst personas, runs parallel web-grounded interviews, and synthesizes the results into a cited report.
+> Ask anything, get a cited research brief. ResearchPilot recruits a panel of AI analyst personas, has each one interview a web-grounded expert in parallel, and synthesizes the findings into a sourced Markdown report.
 
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-Components-000000)](https://ui.shadcn.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-1C3C3C)](https://www.langchain.com/langgraph)
-[![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-F55036)](https://groq.com/)
-[![Tavily](https://img.shields.io/badge/Tavily-Web%20Search-0EA5E9)](https://www.tavily.com/)
-[![uv](https://img.shields.io/badge/uv-Package%20Manager-DE5FE9)](https://docs.astral.sh/uv/)
+[![Next.js](https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Render](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render&logoColor=white)](https://render.com/)
+[![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?logo=vercel&logoColor=white)](https://vercel.com/)
 
 ---
 
-## Overview
+## How it works
 
-ResearchPilot turns a research question into a cited Markdown report:
+1. **Recruit a panel.** An LLM reads the topic and proposes distinct expert personas.
+2. **Human checkpoint.** The graph pauses (`interrupt()`) so you can approve the panel or ask for changes.
+3. **Parallel interviews.** One interview subgraph per analyst asks questions, searches the web with Tavily, and answers from the retrieved context.
+4. **Synthesis.** The sections are merged into an introduction, insights, a conclusion, and a deduplicated source list.
 
-1. **Generate analysts** — an LLM proposes a panel of expert personas for the topic.
-2. **Human review** — the graph pauses so you can approve the panel or ask for changes.
-3. **Run interviews** — one interview subgraph runs per analyst in parallel. Each one asks questions, searches the web with Tavily, and answers from retrieved context.
-4. **Write sections** — every interview becomes a short report section with sources.
-5. **Synthesize** — the sections are combined into an introduction, body, conclusion, and consolidated source list.
+While the interviews run, graph nodes emit progress events that the API streams to the browser over **Server-Sent Events**. The UI shows them on a live "research map" and in an activity feed.
 
-The repository now ships a complete application:
-
-- **Backend** — FastAPI service that starts, pauses, resumes, and polls LangGraph jobs.
-- **Frontend** — Next.js App Router UI with Tailwind CSS and shadcn/ui.
-- **Graphs** — the original LangGraph workflows, reorganized and still usable in LangGraph Studio.
-
-| Layer | Location | Responsibility |
-|---|---|---|
-| Web UI | `web/` | Topic form, analyst review, live progress, report rendering |
-| HTTP API | `src/researchpilot/api/` | Job lifecycle, background execution, polling |
-| Graphs | `src/researchpilot/graph/` | Analyst, interview, and end-to-end research workflows |
-| Domain | `src/researchpilot/models.py`, `state.py` | Pydantic models and typed graph state |
-| Prompts / LLM | `src/researchpilot/prompts.py`, `llm.py` | Prompt templates and lazily constructed chat model |
-
----
-
-## Screenshot
-
-### Full research graph
-
-![LangGraph research workflow](<screenshots/Screenshot 2026-09-08 101749.png>)
-
-The graph creates analyst personas, pauses for human feedback, fans out interview subgraphs, writes report sections, and assembles the final report.
-
----
-
-## Architecture
-
-```text
-Next.js UI (web/)
-    |
-    |  HTTP / JSON
-    v
-FastAPI (src/researchpilot/api/)
-    |
-    v
-ResearchService  ── background asyncio tasks + in-memory checkpointer
-    |
-    v
-LangGraph research graph (src/researchpilot/graph/research.py)
-    |
-    +-- create_analysts
-    +-- human_feedback          <- interrupt() pauses the graph
-    +-- conduct_interview       <- Send() fan-out, one per analyst
-    |     +-- ask_question
-    |     +-- search_web        <- Tavily
-    |     +-- answer_question
-    |     +-- save_interview
-    |     +-- write_section
-    +-- write_report
-    +-- write_introduction
-    +-- write_conclusion
-    +-- finalize_report
-```
-
-The API keeps the paused graph state in a LangGraph checkpointer keyed by `thread_id`. Starting research returns immediately; the frontend polls the job until it is awaiting feedback, running, completed, or failed.
-
-### Registered LangGraph graphs
-
-| Graph | Entry point | Purpose |
-|---|---|---|
-| `create_analysts` | `src/researchpilot/graph/analysts.py:graph` | Generate and review analyst personas |
-| `answer_question` | `src/researchpilot/graph/interview.py:question_answer_graph` | Run a single interview |
-| `deep_agent` | `src/researchpilot/graph/research.py:graph` | Run the full research and reporting workflow |
-
----
-
-## Project Structure
+## Repository layout
 
 ```text
 ResearchPilot/
-├── main.py                       # Minimal launcher
-├── langgraph.json                # LangGraph Studio graph registration
-├── pyproject.toml
-├── .env.example
-├── src/
-│   ├── researchpilot/
-│   │   ├── __init__.py
-│   │   ├── config.py             # Environment-driven settings
-│   │   ├── llm.py                # Lazy ChatGroq factory
-│   │   ├── models.py             # Analyst / Perspectives / SearchQuery
-│   │   ├── prompts.py
-│   │   ├── state.py              # TypedDict graph state
-│   │   ├── graph/
-│   │   │   ├── analysts.py       # Analyst-only graph
-│   │   │   ├── interview.py      # Interview subgraph
-│   │   │   ├── research.py       # Full research graph
-│   │   │   ├── nodes.py
-│   │   │   ├── edges.py
-│   │   │   └── tools.py          # Tavily search node
-│   │   └── api/
-│   │       ├── app.py            # FastAPI app
-│   │       ├── service.py        # Job service and checkpoint handling
-│   │       └── schemas.py        # Request/response models
-│   └── __init__.py
-└── web/
-    ├── app/                      # Next.js App Router
-    ├── components/               # App components + shadcn/ui primitives
-    ├── lib/                      # API client and utilities
-    ├── components.json           # shadcn configuration
-    └── package.json
+├── backend/                     FastAPI + LangGraph service  → deployed to Render
+│   ├── src/researchpilot/
+│   │   ├── api/                 app factory, routes (health, research), schemas, deps
+│   │   ├── services/            ResearchService: job lifecycle, streaming, cancel, TTL
+│   │   ├── graph/               analyst / interview / research graphs, nodes, events
+│   │   ├── core/                settings, LLM factory, logging
+│   │   ├── models.py, state.py, prompts.py
+│   ├── tests/                   API tests against the real graph with a fake LLM
+│   ├── Dockerfile               production image (uv, non-root, single worker)
+│   ├── langgraph.json           LangGraph Studio registration
+│   └── pyproject.toml / uv.lock
+├── frontend/                    Next.js 16 App Router UI     → deployed to Vercel
+│   ├── app/                     layout, page, global styles, icon
+│   ├── components/
+│   │   ├── layout/              header, background, theme, providers
+│   │   ├── landing/             hero, composer, how-it-works
+│   │   ├── research/            review, mission control, constellation, report, history
+│   │   └── ui/                  primitives (button, segmented, spotlight card…)
+│   ├── hooks/                   useResearchJob (SSE + polling), useBackendHealth, …
+│   └── lib/                     typed API client, config, history, utils
+├── render.yaml                  Render Blueprint for the backend
+├── run.py                       local helper: start backend + frontend together
+└── .github/workflows/ci.yml     lint, type-check, test, build
 ```
+
+## UI highlights
+
+- An aurora background with a cursor spotlight, glass surfaces, and dark and light themes.
+- A composer with a spinning glow border, a typewriter placeholder, sliding segmented controls, and a live cost estimate.
+- Analyst cards that tilt in 3D, with gradient avatars that keep the same color everywhere a persona appears.
+- **Mission control**: a live SVG constellation in which data packets fly to the core on every event, sources orbit each analyst as satellites, and progress rings fill up. It sits alongside a streaming activity feed with favicons and animated counters.
+- A report view with a reading-progress bar, a scroll-spy table of contents, a confetti finish, a sources gallery, and copy, `.md` download, and print-to-PDF actions.
+- Report history in `localStorage`, so finished briefs survive backend restarts.
+- Graceful handling of Render cold starts: a "waking server" state with automatic retries.
+- Honors `prefers-reduced-motion`.
 
 ---
 
-## Getting Started
+## Local development
 
-### Prerequisites
-
-| Requirement | Notes |
-|---|---|
-| Python 3.12+ | Required by `pyproject.toml` |
-| `uv` | Python dependency and command runner |
-| Node.js 20.9+ | Required by Next.js 16 |
-| Groq API key | Chat model (`GROQ_API_KEY`) |
-| Tavily API key | Web search (`TAVILY_API_KEY`) |
-
-### 1. Configure environment variables
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 20.9+, a [Groq](https://console.groq.com/) API key, and a [Tavily](https://tavily.com/) API key.
 
 ```bash
-cp .env.example .env
-```
-
-Set at least:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-TAVILY_API_KEY=your_tavily_api_key_here
-```
-
-### 2. Run the backend
-
-```bash
+# 1. Backend
+cd backend
+cp .env.example .env          # add GROQ_API_KEY and TAVILY_API_KEY
 uv sync
 uv run uvicorn researchpilot.api.app:app --reload --port 8000
-```
 
-- API: <http://localhost:8000>
-- Interactive docs: <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/api/health>
-
-Alternatively, `uv run researchpilot-api` starts the same app with reload enabled.
-
-### 3. Run the frontend
-
-In a second terminal:
-
-```bash
-cd web
-npm install
+# 2. Frontend (second terminal)
+cd frontend
 cp .env.local.example .env.local
-npm run dev
+npm install
+npm run dev                   # http://localhost:3000
 ```
 
-Open <http://localhost:3000>.
+To start both at once from the repo root, run `uv run --project backend run.py`.
 
-The frontend reads the backend URL from `NEXT_PUBLIC_API_URL` (default: `http://localhost:8000`). The backend allows `http://localhost:3000` and `http://127.0.0.1:3000` via CORS; override with `CORS_ORIGINS`.
-
-### 4. (Optional) Inspect graphs in LangGraph Studio
-
-```bash
-uv run langgraph dev
-```
-
-The graph paths in `langgraph.json` point at the reorganized package modules.
+| Task | Command |
+|---|---|
+| Backend tests | `cd backend && uv run pytest` |
+| Backend lint / format | `uv run ruff check . && uv run ruff format .` |
+| Frontend lint / types / build | `cd frontend && npm run lint && npm run typecheck && npm run build` |
+| LangGraph Studio | `cd backend && uv run langgraph dev` |
+| API docs (dev only) | <http://localhost:8000/docs> |
 
 ---
 
-## Using the App
+## Deployment
 
-1. Enter a research topic and choose the analyst count and interview depth.
-2. Review the generated analyst panel. Add feedback to regenerate it, or approve it.
-3. Watch interview sections complete in parallel.
-4. Read, copy, or download the final Markdown report.
+Deploy the **backend first**, because the frontend needs its URL.
 
-The active `thread_id` is stored in `localStorage`, so refreshing the page restores the current run while the backend process is alive.
+### Backend on Render
+
+1. Push this repo to GitHub.
+2. In Render, choose **New → Blueprint** and select the repo. Render reads [`render.yaml`](render.yaml), which builds `backend/Dockerfile` and health-checks `/api/health`.
+3. When prompted, set the secrets:
+   - `GROQ_API_KEY`, `TAVILY_API_KEY`
+   - `CORS_ORIGINS`: your Vercel URL, e.g. `https://researchpilot.vercel.app` (comma-separated for several; no trailing slash)
+   - `CORS_ORIGIN_REGEX` (optional): to allow preview deploys, e.g. `https://researchpilot-[a-z0-9-]+\.vercel\.app`. Leave it empty otherwise.
+4. Once the service is live, check `https://<your-service>.onrender.com/api/health`.
+
+To set up the service by hand instead: create a Web Service, set the root directory to `backend`, the runtime to Docker, and the health check path to `/api/health`, then add the same environment variables.
+
+> **Run exactly one instance and one worker.** Jobs and graph checkpoints live in process memory. On the free plan the service sleeps when idle; the UI shows "Waking server" and retries until it answers (about a minute).
+
+### Frontend on Vercel
+
+1. In Vercel, choose **Add New → Project** and import the repo.
+2. Set the **Root Directory** to `frontend`. The framework (Next.js) is detected automatically.
+3. Add an environment variable: `NEXT_PUBLIC_API_URL=https://<your-service>.onrender.com` (no trailing slash).
+4. Deploy. If your final Vercel domain differs from what you put in `CORS_ORIGINS`, update it on Render.
+
+`NEXT_PUBLIC_*` values are baked in at build time, so redeploy the frontend after changing them.
 
 ---
 
-## API Reference
+## API
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | API status and required-key check |
-| `POST` | `/api/research` | Start a research job |
-| `GET` | `/api/research/{thread_id}` | Poll job status, progress, and report |
-| `POST` | `/api/research/{thread_id}/resume` | Approve or regenerate analysts |
+| `GET` | `/api/health` | Status, missing keys, model, active jobs |
+| `POST` | `/api/research` | Start a job `{topic, max_analysts 1–6, max_num_turns 1–4}` |
+| `GET` | `/api/research/{id}` | Full job snapshot (analysts, progress, activity, sources, report) |
+| `GET` | `/api/research/{id}/stream` | SSE: a `job` event per change (activity is incremental), plus `end` |
+| `POST` | `/api/research/{id}/resume` | `{feedback: null}` approves the panel; text regenerates it |
+| `POST` | `/api/research/{id}/cancel` | Stop a run |
 
-Start a job:
+Statuses: `queued → generating_analysts → awaiting_feedback → researching → writing_report → completed`, or `failed` / `cancelled`.
 
-```bash
-curl -X POST http://localhost:8000/api/research \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "How autonomous AI agents are changing software engineering teams", "max_analysts": 3, "max_num_turns": 2}'
-```
+## Configuration (backend)
 
-Approve the analyst panel:
-
-```bash
-curl -X POST http://localhost:8000/api/research/<thread_id>/resume \
-  -H "Content-Type: application/json" \
-  -d '{"feedback": null}'
-```
-
-Request a new panel:
-
-```bash
-curl -X POST http://localhost:8000/api/research/<thread_id>/resume \
-  -H "Content-Type: application/json" \
-  -d '{"feedback": "Add a security researcher and focus more on regulation."}'
-```
-
-Job statuses: `queued`, `generating_analysts`, `awaiting_feedback`, `researching`, `completed`, `failed`.
-
----
-
-## Environment Variables
-
-| Variable | Required | Default | Purpose |
-|---|---|---:|---|
-| `GROQ_API_KEY` | Yes | — | Authenticates the ChatGroq model |
-| `TAVILY_API_KEY` | Yes | — | Authenticates Tavily web search |
-| `GROQ_MODEL` | No | `openai/gpt-oss-120b` | Model id passed to ChatGroq |
-| `GROQ_TEMPERATURE` | No | `0` | Sampling temperature |
-| `TAVILY_MAX_RESULTS` | No | `3` | Results per web search |
-| `CORS_ORIGINS` | No | `http://localhost:3000,http://127.0.0.1:3000` | Allowed browser origins |
-| `NEXT_PUBLIC_API_URL` | No | `http://localhost:8000` | Backend URL used by the web app |
-
----
-
-## Design Decisions
-
-| Choice | Reason |
-|---|---|
-| Package layout under `src/researchpilot` | Imports work from any directory and match standard Python packaging |
-| Lazy LLM and search construction | The app and graphs can be imported without API keys |
-| `interrupt()` inside `human_feedback` | One pause mechanism works in Studio and through the API |
-| Background jobs + polling | Long research runs do not hold HTTP requests open |
-| Single `search_web` node | Removes the duplicate search nodes while keeping grounded answers |
-| Checkpoint serializer allow-list | Pydantic analyst models round-trip explicitly instead of relying on implicit deserialization |
-| shadcn/ui primitives in-repo | UI is editable and has no external component runtime |
-
----
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY`, `TAVILY_API_KEY` | none (required) | Provider credentials |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Chat model |
+| `GROQ_TEMPERATURE` | `0` | Sampling temperature |
+| `GROQ_MAX_RETRIES` | `6` | Retries with `retry-after` back-off (helps with tokens-per-minute limits) |
+| `TAVILY_MAX_RESULTS` | `3` | Results per search |
+| `GRAPH_MAX_CONCURRENCY` | `3` | Max graph tasks in flight per job |
+| `ENVIRONMENT` | `development` | `production` hides `/docs` and `/openapi.json` |
+| `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` | localhost:3000 | Allowed browser origins |
+| `MAX_ACTIVE_JOBS` | `4` | Concurrent running jobs before `429` |
+| `JOB_TTL_MINUTES` | `180` | How long idle jobs are kept in memory |
+| `LANGSMITH_*` | unset | Optional tracing |
 
 ## Limitations
 
-- Jobs and checkpoints are stored in memory. Restarting the backend clears active research and the frontend will report the job as unavailable.
-- The API is single-process and has no authentication. Do not expose it publicly without adding auth and a persistent checkpointer.
-- Report quality depends on the topic and the quality of Tavily results. Verify sources before using output for business, academic, legal, medical, or financial decisions.
-
-## Future Improvements
-
-- Swap `InMemorySaver` for a SQLite or Postgres checkpointer to survive restarts.
-- Stream graph events to the UI with Server-Sent Events instead of polling.
-- Add automated tests for routing, the job state machine, and API contracts.
-- Add per-job cancellation and usage/cost reporting.
-- Add report history and export to PDF/DOCX.
+- State is in memory, so a restart or redeploy drops in-flight jobs. Finished reports remain in the browser's history. For durability, swap `InMemorySaver` for a Postgres checkpointer and move jobs to a database.
+- There is no authentication. Anyone with the URL can spend your Groq and Tavily credits; `MAX_ACTIVE_JOBS` caps concurrent runs, not usage. Add auth or rate limiting before sharing widely.
+- On Groq's free tier, large panels at high depth can still hit tokens-per-minute limits. The API retries with back-off and reports a clear error if it still fails.
+- Output is AI-generated. Verify sources before relying on it.

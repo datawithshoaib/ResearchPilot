@@ -1,0 +1,36 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# New > Blueprint in the Render dashboard, point it at this repo, then fill in the
+# `sync: false` secrets when prompted.
+services:
+  - type: web
+    name: researchpilot-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      # Your Vercel production URL, e.g. https://researchpilot.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # Optional: allow Vercel preview deployments, e.g. https://researchpilot-[a-z0-9-]+\.vercel\.app
+      - key: CORS_ORIGIN_REGEX
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: MAX_ACTIVE_JOBS
+        value: "4"
+      - key: JOB_TTL_MINUTES
+        value: "180"

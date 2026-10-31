@@ -1,0 +1,3 @@
+"""ResearchPilot: a multi-agent research workflow built on LangGraph."""
+
+__version__ = "0.2.0"

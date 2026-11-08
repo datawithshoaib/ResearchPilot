@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,7 +12,7 @@ import {
   type StartResearchInput,
 } from "@/lib/api";
 import { STORAGE_KEYS } from "@/lib/config";
-import { saveToHistory } from "@/lib/history";
+import { getSupabase } from "@/lib/supabase/client";
 
 const MAX_ACTIVITY = 300;
 const POLL_INTERVAL_MS = 2_500;
@@ -48,6 +49,16 @@ export function useResearchJob() {
   const [restoring, setRestoring] = useState(true);
   const [pending, setPending] = useState<PendingAction>(null);
   const [connection, setConnection] = useState<Connection>("idle");
+  const router = useRouter();
+
+  /** The session expired or was revoked: send the user back through sign-in. */
+  const redirectToLogin = useCallback(() => {
+    toast.error("Your session has expired", { description: "Please sign in again." });
+    // Drop the local session first, or the proxy would bounce /login straight back.
+    void getSupabase()
+      .auth.signOut({ scope: "local" })
+      .finally(() => router.replace("/login"));
+  }, [router]);
 
   const applySnapshot = useCallback((next: ResearchJob, partial: boolean) => {
     setJob((previous) => mergeJob(previous, next, partial));
@@ -57,7 +68,7 @@ export function useResearchJob() {
     storeThread(null);
     setJob(null);
     toast.error("That research run is no longer available", {
-      description: "The server may have restarted. Finished reports stay in your history.",
+      description: "The server may have restarted. Finished reports are saved to your history.",
     });
   }, []);
 
@@ -78,7 +89,8 @@ export function useResearchJob() {
             if (!cancelled) setJob(restored);
           })
           .catch((error) => {
-            if (error instanceof ApiError && error.status === 404) storeThread(null);
+            // 404 also covers a run that belongs to a different account.
+            if (error instanceof ApiError && (error.status === 404 || error.isUnauthorized)) storeThread(null);
           })
       : Promise.resolve();
 
@@ -114,6 +126,10 @@ export function useResearchJob() {
           loseJob();
           return;
         }
+        if (error instanceof ApiError && error.isUnauthorized) {
+          redirectToLogin();
+          return;
+        }
       }
       if (!disposed) pollTimer = window.setTimeout(poll, POLL_INTERVAL_MS);
     };
@@ -124,10 +140,10 @@ export function useResearchJob() {
       void poll();
     };
 
-    if (typeof EventSource === "undefined") {
-      fallBackToPolling();
-    } else {
-      source = new EventSource(api.streamUrl(threadId));
+    const connect = async () => {
+      const url = await api.streamUrl(threadId);
+      if (disposed) return;
+      source = new EventSource(url);
       source.addEventListener("job", (event) => {
         failures = 0;
         setConnection("live");
@@ -136,11 +152,15 @@ export function useResearchJob() {
       source.addEventListener("end", () => source?.close());
       source.onerror = () => {
         failures += 1;
-        // CLOSED means the server refused the stream (e.g. 404); otherwise the
-        // browser is reconnecting on its own — give it a couple of tries.
+        // CLOSED means the server refused the stream (e.g. 404, or 401 once the
+        // token in the URL expires); otherwise the browser is reconnecting on its
+        // own — give it a couple of tries. Polling fetches a fresh token each time.
         if (source?.readyState === EventSource.CLOSED || failures >= 3) fallBackToPolling();
       };
-    }
+    };
+
+    if (typeof EventSource === "undefined") fallBackToPolling();
+    else void connect();
 
     return () => {
       disposed = true;
@@ -148,12 +168,12 @@ export function useResearchJob() {
       window.clearTimeout(pollTimer);
       setConnection("idle");
     };
-  }, [threadId, live, applySnapshot, loseJob]);
+  }, [threadId, live, applySnapshot, loseJob, redirectToLogin]);
 
-  // Persist the active run, and archive finished reports.
+  // Persist the active run so a refresh can pick it up. Finished reports are
+  // archived to the user's history by the API.
   useEffect(() => {
     if (!job) return;
-    if (job.status === "completed") saveToHistory(job);
     storeThread(TERMINAL_STATUSES.includes(job.status) && job.status !== "completed" ? null : job.thread_id);
   }, [job]);
 
@@ -165,12 +185,13 @@ export function useResearchJob() {
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) loseJob();
+      else if (error instanceof ApiError && error.isUnauthorized) redirectToLogin();
       else toast.error(errorMessage(error));
       return false;
     } finally {
       setPending(null);
     }
-  }, [loseJob]);
+  }, [loseJob, redirectToLogin]);
 
   const start = useCallback(
     (input: StartResearchInput) => run("start", () => api.startResearch(input)),

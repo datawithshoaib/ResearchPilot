@@ -1,9 +1,10 @@
 import type { Analyst, ResearchJob, Source } from "@/lib/api";
-import { STORAGE_KEYS } from "@/lib/config";
+import { getSupabase } from "@/lib/supabase/client";
 
 /**
- * Finished reports are kept in the browser so they survive backend restarts
- * (the API stores jobs in memory only).
+ * Each signed-in user's finished reports, stored in the Supabase `reports` table.
+ * The API writes a row when a run completes; row level security limits reads and
+ * deletes to the owner, so these queries only ever see the current user's reports.
  */
 export type HistoryEntry = {
   thread_id: string;
@@ -12,49 +13,45 @@ export type HistoryEntry = {
   completed_at: string;
   analysts: Analyst[];
   sources: Source[];
-  final_report: string;
 };
 
-const MAX_ENTRIES = 12;
+export type HistoryReport = HistoryEntry & { final_report: string };
 
-export function readHistory(): HistoryEntry[] {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEYS.history);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+const TABLE = "reports";
+const SUMMARY_COLUMNS = "thread_id, topic, created_at, completed_at, analysts, sources";
+const PAGE_SIZE = 50;
+
+function fail(action: string, error: { message: string }): never {
+  throw new Error(`Couldn't ${action}: ${error.message}`);
 }
 
-function writeHistory(entries: HistoryEntry[]) {
-  try {
-    window.localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(entries));
-  } catch {
-    // Storage full or blocked: history is a convenience, so drop silently.
-  }
+/** Newest first, without report bodies so the list stays light. */
+export async function listHistory(): Promise<HistoryEntry[]> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select(SUMMARY_COLUMNS)
+    .order("completed_at", { ascending: false })
+    .limit(PAGE_SIZE);
+  if (error) fail("load your history", error);
+  return (data ?? []) as HistoryEntry[];
 }
 
-export function saveToHistory(job: ResearchJob) {
-  if (job.status !== "completed" || !job.final_report) return;
-  const entry: HistoryEntry = {
-    thread_id: job.thread_id,
-    topic: job.topic,
-    created_at: job.created_at,
-    completed_at: job.updated_at,
-    analysts: job.analysts,
-    sources: job.sources,
-    final_report: job.final_report,
-  };
-  const rest = readHistory().filter((item) => item.thread_id !== job.thread_id);
-  writeHistory([entry, ...rest].slice(0, MAX_ENTRIES));
+export async function getHistoryReport(threadId: string): Promise<HistoryReport | null> {
+  const { data, error } = await getSupabase()
+    .from(TABLE)
+    .select(`${SUMMARY_COLUMNS}, final_report`)
+    .eq("thread_id", threadId)
+    .maybeSingle();
+  if (error) fail("open that report", error);
+  return (data as HistoryReport | null) ?? null;
 }
 
-export function removeFromHistory(threadId: string) {
-  writeHistory(readHistory().filter((item) => item.thread_id !== threadId));
+export async function removeFromHistory(threadId: string): Promise<void> {
+  const { error } = await getSupabase().from(TABLE).delete().eq("thread_id", threadId);
+  if (error) fail("delete that report", error);
 }
 
-export function jobFromHistory(entry: HistoryEntry): ResearchJob {
+export function jobFromHistory(entry: HistoryReport): ResearchJob {
   return {
     thread_id: entry.thread_id,
     status: "completed",

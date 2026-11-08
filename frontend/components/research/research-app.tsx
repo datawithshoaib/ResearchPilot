@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle, CloudOff, Coffee } from "lucide-react";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
@@ -18,7 +19,7 @@ import { ReportView } from "@/components/research/report-view";
 import { useBackendHealth, type BackendState } from "@/hooks/use-backend-health";
 import { useResearchJob } from "@/hooks/use-research-job";
 import { RUNNING_STATUSES, type ResearchJob } from "@/lib/api";
-import { jobFromHistory } from "@/lib/history";
+import { getHistoryReport, jobFromHistory, type HistoryEntry } from "@/lib/history";
 
 type View = "loading" | "landing" | "assembling" | "review" | "mission" | "report" | "ended";
 
@@ -56,6 +57,20 @@ export function ResearchApp() {
   const view = viewFor(job, research.restoring);
   const busy = view === "assembling" || view === "mission";
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
+  const { open: openJob } = research;
+
+  const openFromHistory = useCallback(
+    async (entry: HistoryEntry) => {
+      try {
+        const report = await getHistoryReport(entry.thread_id);
+        if (report) openJob(jobFromHistory(report));
+        else toast.error("That report is no longer in your history.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Couldn't open that report.");
+      }
+    },
+    [openJob],
+  );
 
   return (
     <div className="relative mx-auto w-full max-w-6xl px-5 pt-6 pb-16 sm:px-8 sm:pt-8">
@@ -149,7 +164,7 @@ export function ResearchApp() {
       <HistoryDrawer
         open={historyOpen}
         onClose={closeHistory}
-        onSelect={(entry) => research.open(jobFromHistory(entry))}
+        onSelect={(entry) => void openFromHistory(entry)}
       />
     </div>
   );

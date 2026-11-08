@@ -9,14 +9,42 @@ import pytest
 
 os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
 os.environ.setdefault("TAVILY_API_KEY", "test-tavily-key")
+os.environ["SUPABASE_URL"] = "https://test-project.supabase.co"
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test-service-role-key"
+# Tests mint legacy HS256 tokens so verification needs no network access.
+os.environ["SUPABASE_JWT_SECRET"] = "test-jwt-secret-that-is-long-enough-for-hs256"
 
+import jwt  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from langchain_core.messages import AIMessage  # noqa: E402
 
 from app.graph import nodes, tools  # noqa: E402
 from app.graph.models import Analyst, Perspectives, SearchQuery  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.services.reports import InMemoryReportStore  # noqa: E402
 from app.services.research import ResearchService  # noqa: E402
+
+USER_ID = "11111111-1111-1111-1111-111111111111"
+OTHER_USER_ID = "22222222-2222-2222-2222-222222222222"
+
+
+def make_token(user_id: str = USER_ID, *, expires_in: int = 3600, **overrides: Any) -> str:
+    now = int(time.time())
+    claims = {
+        "sub": user_id,
+        "email": f"{user_id[:4]}@example.com",
+        "aud": "authenticated",
+        "iss": f"{os.environ['SUPABASE_URL']}/auth/v1",
+        "iat": now,
+        "exp": now + expires_in,
+        "role": "authenticated",
+        **overrides,
+    }
+    return jwt.encode(claims, os.environ["SUPABASE_JWT_SECRET"], algorithm="HS256")
+
+
+def auth_headers(user_id: str = USER_ID) -> dict[str, str]:
+    return {"Authorization": f"Bearer {make_token(user_id)}"}
 
 
 class _Structured:
@@ -82,11 +110,20 @@ def fake_providers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def make_client(fake_providers: None) -> Iterator[Callable[..., TestClient]]:
+def report_store() -> InMemoryReportStore:
+    return InMemoryReportStore()
+
+
+@pytest.fixture
+def make_client(
+    fake_providers: None, report_store: InMemoryReportStore
+) -> Iterator[Callable[..., TestClient]]:
     clients: list[TestClient] = []
 
-    def factory(**service_kwargs: Any) -> TestClient:
-        client = TestClient(create_app(ResearchService(**service_kwargs)))
+    def factory(*, user_id: str | None = USER_ID, **service_kwargs: Any) -> TestClient:
+        service_kwargs.setdefault("report_store", report_store)
+        headers = auth_headers(user_id) if user_id else {}
+        client = TestClient(create_app(ResearchService(**service_kwargs)), headers=headers)
         client.__enter__()
         clients.append(client)
         return client

@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_service, require_configured
+from app.api.deps import CurrentUser, get_service, require_configured
 from app.schemas.research import ResearchJob, ResumeResearchRequest, StartResearchRequest
 from app.services.research import (
     ResearchCapacityError,
@@ -25,17 +25,17 @@ NOT_FOUND = "Research job not found. It may have expired or the server restarted
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_configured)],
 )
-async def start_research(request: StartResearchRequest, service: Service) -> ResearchJob:
+async def start_research(request: StartResearchRequest, service: Service, user: CurrentUser) -> ResearchJob:
     try:
-        return await service.start(request)
+        return await service.start(request, user_id=user.id)
     except ResearchCapacityError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
 
 
 @router.get("/{thread_id}", response_model=ResearchJob)
-def get_research(thread_id: str, service: Service) -> ResearchJob:
+def get_research(thread_id: str, service: Service, user: CurrentUser) -> ResearchJob:
     try:
-        return service.get(thread_id)
+        return service.get(thread_id, user_id=user.id)
     except ResearchNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from exc
 
@@ -45,11 +45,16 @@ def get_research(thread_id: str, service: Service) -> ResearchJob:
     response_class=StreamingResponse,
     responses={200: {"content": {"text/event-stream": {}}}},
 )
-async def stream_research(thread_id: str, request: Request, service: Service) -> StreamingResponse:
-    """Server-Sent Events: a `job` event per change and a comment heartbeat while idle."""
+async def stream_research(
+    thread_id: str, request: Request, service: Service, user: CurrentUser
+) -> StreamingResponse:
+    """Server-Sent Events: a `job` event per change and a comment heartbeat while idle.
+
+    `EventSource` cannot set headers, so the access token may arrive as `?access_token=`.
+    """
 
     try:
-        updates = service.watch(thread_id)
+        updates = service.watch(thread_id, user_id=user.id)
         first = await anext(updates)
     except ResearchNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from exc
@@ -92,10 +97,10 @@ async def stream_research(thread_id: str, request: Request, service: Service) ->
     dependencies=[Depends(require_configured)],
 )
 async def resume_research(
-    thread_id: str, service: Service, request: ResumeResearchRequest | None = None
+    thread_id: str, service: Service, user: CurrentUser, request: ResumeResearchRequest | None = None
 ) -> ResearchJob:
     try:
-        return await service.resume(thread_id, request.feedback if request else None)
+        return await service.resume(thread_id, request.feedback if request else None, user_id=user.id)
     except ResearchNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from exc
     except ResearchConflictError as exc:
@@ -105,8 +110,8 @@ async def resume_research(
 
 
 @router.post("/{thread_id}/cancel", response_model=ResearchJob)
-async def cancel_research(thread_id: str, service: Service) -> ResearchJob:
+async def cancel_research(thread_id: str, service: Service, user: CurrentUser) -> ResearchJob:
     try:
-        return await service.cancel(thread_id)
+        return await service.cancel(thread_id, user_id=user.id)
     except ResearchNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from exc

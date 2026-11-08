@@ -1,5 +1,6 @@
 """FastAPI application exposing the research workflow to the web frontend."""
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -9,9 +10,24 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api.router import api_router
-from app.core.config import get_settings
+from app.core.auth import SupabaseTokenVerifier
+from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.services.reports import NullReportStore, ReportStore, SupabaseReportStore
 from app.services.research import ResearchService
+
+logger = logging.getLogger(__name__)
+
+
+def _build_report_store(settings: Settings) -> ReportStore:
+    if settings.supabase_base_url and settings.supabase_service_role_key:
+        return SupabaseReportStore(
+            settings.supabase_base_url,
+            settings.supabase_service_role_key,
+            table=settings.supabase_reports_table,
+        )
+    logger.warning("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set: reports will not be saved")
+    return NullReportStore()
 
 
 def create_app(service: ResearchService | None = None) -> FastAPI:
@@ -20,10 +36,12 @@ def create_app(service: ResearchService | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.token_verifier = SupabaseTokenVerifier(settings) if settings.supabase_base_url else None
         app.state.research_service = service or ResearchService(
             max_active_jobs=settings.max_active_jobs,
             job_ttl=timedelta(minutes=settings.job_ttl_minutes),
             max_concurrency=settings.graph_max_concurrency,
+            report_store=_build_report_store(settings),
         )
         yield
         await app.state.research_service.shutdown()
@@ -46,7 +64,7 @@ def create_app(service: ResearchService | None = None) -> FastAPI:
         allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Authorization", "Content-Type"],
     )
     # SSE responses are excluded from gzip by Starlette, so streaming is unaffected.
     app.add_middleware(GZipMiddleware, minimum_size=1024)

@@ -49,7 +49,26 @@ class Settings(BaseSettings):
     max_active_jobs: int = 4
     job_ttl_minutes: int = 180
 
-    @field_validator("cors_origin_regex", "groq_api_key", "tavily_api_key", mode="before")
+    # Supabase: verifies user access tokens and stores each user's report history.
+    # `SUPABASE_URL` is the project URL, e.g. https://abcd1234.supabase.co.
+    supabase_url: str | None = None
+    # Server-only secret used to write finished reports. Never expose it to the browser.
+    supabase_service_role_key: str | None = None
+    # Only needed for projects that still sign tokens with the legacy HS256 secret;
+    # projects on asymmetric signing keys are verified through the public JWKS.
+    supabase_jwt_secret: str | None = None
+    supabase_jwt_audience: str = "authenticated"
+    supabase_reports_table: str = "reports"
+
+    @field_validator(
+        "cors_origin_regex",
+        "groq_api_key",
+        "tavily_api_key",
+        "supabase_url",
+        "supabase_service_role_key",
+        "supabase_jwt_secret",
+        mode="before",
+    )
     @classmethod
     def _blank_to_none(cls, value: str | None) -> str | None:
         # Dashboards often store optional variables as empty strings.
@@ -60,12 +79,18 @@ class Settings(BaseSettings):
         return [origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
+    def supabase_base_url(self) -> str | None:
+        return self.supabase_url.rstrip("/") if self.supabase_url else None
+
+    @property
     def missing_keys(self) -> list[str]:
         return [
             name
             for name, value in (
                 ("GROQ_API_KEY", self.groq_api_key),
                 ("TAVILY_API_KEY", self.tavily_api_key),
+                ("SUPABASE_URL", self.supabase_url),
+                ("SUPABASE_SERVICE_ROLE_KEY", self.supabase_service_role_key),
             )
             if not value
         ]

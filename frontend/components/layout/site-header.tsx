@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { History } from "lucide-react";
 
+import { UserMenu } from "@/components/auth/user-menu";
 import { BackendStatus } from "@/components/layout/backend-status";
 import { LogoMark } from "@/components/layout/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -49,6 +50,7 @@ export function SiteHeader({
           <span className="hidden sm:inline">History</span>
         </Button>
         <ThemeToggle />
+        <UserMenu onOpenHistory={onOpenHistory} />
       </div>
     </motion.header>
   );

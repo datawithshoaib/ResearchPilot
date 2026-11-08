@@ -112,3 +112,88 @@ def test_rate_limit_errors_are_explained(client, monkeypatch):
     job = wait_for_status(client, job["thread_id"], "failed")
     assert "rate limit" in job["error"].lower()
     assert "429" not in job["error"]
+
+
+# ------------------------------------------------------------------ auth & history
+
+
+def test_research_requires_sign_in(make_client):
+    anonymous = make_client(user_id=None)
+    assert anonymous.post("/api/research", json=TOPIC).status_code == 401
+    assert anonymous.get("/api/research/anything").status_code == 401
+    # Health stays public so the UI can show server status before sign-in.
+    assert anonymous.get("/api/health").status_code == 200
+
+
+def test_invalid_and_expired_tokens_are_rejected(client):
+    from conftest import make_token
+
+    expired = {"Authorization": f"Bearer {make_token(expires_in=-60)}"}
+    assert client.post("/api/research", json=TOPIC, headers=expired).status_code == 401
+
+    wrong_audience = {"Authorization": f"Bearer {make_token(aud='anon')}"}
+    assert client.post("/api/research", json=TOPIC, headers=wrong_audience).status_code == 401
+
+    garbage = {"Authorization": "Bearer not-a-jwt"}
+    assert client.post("/api/research", json=TOPIC, headers=garbage).status_code == 401
+
+
+def test_jobs_are_private_to_their_owner(client):
+    from conftest import OTHER_USER_ID, auth_headers
+
+    job = client.post("/api/research", json=TOPIC).json()
+    other = auth_headers(OTHER_USER_ID)
+
+    assert client.get(f"/api/research/{job['thread_id']}", headers=other).status_code == 404
+    assert client.post(f"/api/research/{job['thread_id']}/cancel", headers=other).status_code == 404
+    assert client.get(f"/api/research/{job['thread_id']}").status_code == 200
+
+
+def test_stream_accepts_token_query_param(client):
+    from conftest import make_token
+
+    job = client.post("/api/research", json=TOPIC).json()
+    client.post(f"/api/research/{job['thread_id']}/cancel")
+
+    # EventSource cannot send headers, so drop ours and use the query parameter.
+    del client.headers["Authorization"]
+    url = f"/api/research/{job['thread_id']}/stream"
+    assert client.get(url).status_code == 401
+    with client.stream("GET", url, params={"access_token": make_token()}) as response:
+        assert response.status_code == 200
+
+
+def test_completed_report_is_saved_to_user_history(client, report_store):
+    from conftest import USER_ID
+
+    job = client.post("/api/research", json=TOPIC).json()
+    wait_for_status(client, job["thread_id"], "awaiting_feedback")
+    client.post(f"/api/research/{job['thread_id']}/resume", json={})
+    job = wait_for_status(client, job["thread_id"], "completed", "failed")
+    assert job["status"] == "completed", job["error"]
+
+    [record] = report_store.records
+    assert record.user_id == USER_ID
+    assert record.thread_id == job["thread_id"]
+    assert record.topic == TOPIC["topic"]
+    assert record.final_report == job["final_report"]
+    assert len(record.analysts) == 2
+    assert {s.url for s in record.sources} == {"https://a.test", "https://b.test"}
+
+
+def test_history_save_failure_does_not_fail_the_job(make_client):
+    class BrokenStore:
+        async def save(self, record):
+            raise RuntimeError("database down")
+
+        async def aclose(self):
+            return None
+
+    client = make_client(report_store=BrokenStore())
+    job = client.post("/api/research", json=TOPIC).json()
+    wait_for_status(client, job["thread_id"], "awaiting_feedback")
+    client.post(f"/api/research/{job['thread_id']}/resume", json={})
+    job = wait_for_status(client, job["thread_id"], "completed", "failed")
+
+    assert job["status"] == "completed"
+    assert any("could not be saved" in event["message"] for event in job["activity"])

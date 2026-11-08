@@ -29,23 +29,26 @@ ResearchPilot/
 │   │   ├── main.py              FastAPI app factory (`app.main:app`)
 │   │   ├── api/                 router, dependencies, routes (health, research)
 │   │   ├── schemas/             HTTP request/response models
-│   │   ├── services/            ResearchService: job lifecycle, streaming, cancel, TTL
+│   │   ├── services/            ResearchService (jobs, streaming, cancel, TTL), report store
 │   │   ├── graph/               LangGraph: models, state, prompts, nodes, edges, tools, events
 │   │   │   └── workflows/       compiled graphs: analysts, interview, research
-│   │   └── core/                settings, LLM factory, logging
+│   │   └── core/                settings, Supabase token verification, LLM factory, logging
 │   ├── tests/                   API tests against the real graph with a fake LLM
 │   ├── Dockerfile               production image (uv, non-root, single worker)
 │   ├── langgraph.json           LangGraph Studio registration
 │   └── pyproject.toml / uv.lock
 ├── frontend/                    Next.js 16 App Router UI     → deployed to Vercel
-│   ├── app/                     layout, page, global styles, icon
+│   ├── app/                     layout, page, /login, /auth/callback, global styles, icon
+│   ├── proxy.ts                 refreshes the Supabase session, redirects signed-out visitors
 │   ├── components/
+│   │   ├── auth/                auth provider, login form (email + Google), user menu
 │   │   ├── layout/              header, background, theme, providers
 │   │   ├── landing/             hero, composer, how-it-works
 │   │   ├── research/            review, mission control, constellation, report, history
 │   │   └── ui/                  primitives (button, segmented, spotlight card…)
 │   ├── hooks/                   useResearchJob (SSE + polling), useBackendHealth, …
-│   └── lib/                     typed API client, config, history, utils
+│   └── lib/                     typed API client, Supabase clients, history, utils
+├── supabase/migrations/         `reports` table + row level security
 ├── render.yaml                  Render Blueprint for the backend
 ├── run.py                       local helper: start backend + frontend together
 └── .github/workflows/ci.yml     lint, type-check, test, build
@@ -58,7 +61,7 @@ ResearchPilot/
 - Analyst cards that tilt in 3D, with gradient avatars that keep the same color everywhere a persona appears.
 - **Mission control**: a live SVG constellation in which data packets fly to the core on every event, sources orbit each analyst as satellites, and progress rings fill up. It sits alongside a streaming activity feed with favicons and animated counters.
 - A report view with a reading-progress bar, a scroll-spy table of contents, a confetti finish, a sources gallery, and copy, `.md` download, and print-to-PDF actions.
-- Report history in `localStorage`, so finished briefs survive backend restarts.
+- Sign-in with email/password or Google (Supabase Auth), and a per-account report history that follows you across devices.
 - Graceful handling of Render cold starts: a "waking server" state with automatic retries.
 - Honors `prefers-reduced-motion`.
 
@@ -66,18 +69,18 @@ ResearchPilot/
 
 ## Local development
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 20.9+, a [Groq](https://console.groq.com/) API key, and a [Tavily](https://tavily.com/) API key.
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 20.9+, a [Groq](https://console.groq.com/) API key, a [Tavily](https://tavily.com/) API key, and a [Supabase](https://supabase.com/) project (see [Authentication and history](#authentication-and-history)).
 
 ```bash
 # 1. Backend
 cd backend
-cp .env.example .env          # add GROQ_API_KEY and TAVILY_API_KEY
+cp .env.example .env          # add GROQ_API_KEY, TAVILY_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 uv sync
 uv run uvicorn app.main:app --reload --port 8000   # or: uv run python -m app
 
 # 2. Frontend (second terminal)
 cd frontend
-cp .env.local.example .env.local
+cp .env.local.example .env.local   # add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm install
 npm run dev                   # http://localhost:3000
 ```
@@ -94,6 +97,37 @@ To start both at once from the repo root, run `python run.py` (add `--backend-on
 
 ---
 
+## Authentication and history
+
+Users sign in with **Supabase Auth**, using email and password or **Google**. Every research run belongs to the account that started it, and each finished report is saved to that user's history.
+
+```text
+browser ──(Supabase session)──▶ Supabase Auth
+   │  Authorization: Bearer <access token>
+   ▼
+FastAPI ── verifies the JWT (JWKS, or HS256 secret on legacy projects)
+   │       scopes every job to the token's user id
+   └── on completion: inserts into public.reports (service-role key)
+
+browser ──(anon key + session)──▶ public.reports   # RLS: read/delete own rows only
+```
+
+### Supabase setup
+
+1. Create a project at [supabase.com](https://supabase.com/).
+2. **Create the table.** In the SQL editor, run [`supabase/migrations/20261108000000_create_reports.sql`](supabase/migrations/20261108000000_create_reports.sql), or run `supabase db push` if you use the Supabase CLI.
+3. **Keys** (Project Settings → API):
+   - Frontend: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the anon or publishable key).
+   - Backend: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. This key is secret and must never reach the browser. If your project still signs tokens with the legacy JWT secret, also set `SUPABASE_JWT_SECRET`.
+4. **URL configuration** (Authentication → URL Configuration): set **Site URL** to your app's URL and add `http://localhost:3000/auth/callback` and `https://<your-app>.vercel.app/auth/callback` to **Redirect URLs**.
+5. **Google sign-in:**
+   - In Google Cloud Console → APIs & Services → Credentials, create an **OAuth client ID** of type *Web application*.
+   - Add `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI.
+   - In Supabase → Authentication → Sign In / Providers → **Google**, enable the provider and paste the client ID and secret.
+6. **Email sign-up** works out of the box. With "Confirm email" enabled (the default), new users must click the emailed link, which lands on `/auth/callback`.
+
+---
+
 ## Deployment
 
 Deploy the **backend first**, because the frontend needs its URL.
@@ -104,6 +138,7 @@ Deploy the **backend first**, because the frontend needs its URL.
 2. In Render, choose **New → Blueprint** and select the repo. Render reads [`render.yaml`](render.yaml), which builds `backend/Dockerfile` and health-checks `/api/health`.
 3. When prompted, set the secrets:
    - `GROQ_API_KEY`, `TAVILY_API_KEY`
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (and `SUPABASE_JWT_SECRET` only on legacy-secret projects)
    - `CORS_ORIGINS`: your Vercel URL, e.g. `https://researchpilot.vercel.app` (comma-separated for several; no trailing slash)
    - `CORS_ORIGIN_REGEX` (optional): to allow preview deploys, e.g. `https://researchpilot-[a-z0-9-]+\.vercel\.app`. Leave it empty otherwise.
 4. Once the service is live, check `https://<your-service>.onrender.com/api/health`.
@@ -116,7 +151,7 @@ To set up the service by hand instead: create a Web Service, set the root direct
 
 1. In Vercel, choose **Add New → Project** and import the repo.
 2. Set the **Root Directory** to `frontend`. The framework (Next.js) is detected automatically.
-3. Add an environment variable: `NEXT_PUBLIC_API_URL=https://<your-service>.onrender.com` (no trailing slash).
+3. Add environment variables: `NEXT_PUBLIC_API_URL=https://<your-service>.onrender.com` (no trailing slash), `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 4. Deploy. If your final Vercel domain differs from what you put in `CORS_ORIGINS`, update it on Render.
 
 `NEXT_PUBLIC_*` values are baked in at build time, so redeploy the frontend after changing them.
@@ -124,6 +159,8 @@ To set up the service by hand instead: create a Web Service, set the root direct
 ---
 
 ## API
+
+Every `/api/research` endpoint requires `Authorization: Bearer <Supabase access token>`. The stream endpoint also accepts `?access_token=`, because `EventSource` cannot send headers. A job owned by another user returns `404`.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -141,6 +178,10 @@ Statuses: `queued → generating_analysts → awaiting_feedback → researching 
 | Variable | Default | Purpose |
 |---|---|---|
 | `GROQ_API_KEY`, `TAVILY_API_KEY` | none (required) | Provider credentials |
+| `SUPABASE_URL` | none (required) | Project URL; the JWT issuer and JWKS are derived from it |
+| `SUPABASE_SERVICE_ROLE_KEY` | none (required) | Writes finished reports to `public.reports` |
+| `SUPABASE_JWT_SECRET` | unset | Only for projects on the legacy HS256 secret |
+| `SUPABASE_REPORTS_TABLE` | `reports` | History table name |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Chat model |
 | `GROQ_TEMPERATURE` | `0` | Sampling temperature |
 | `GROQ_MAX_RETRIES` | `6` | Retries with `retry-after` back-off (helps with tokens-per-minute limits) |
@@ -154,7 +195,7 @@ Statuses: `queued → generating_analysts → awaiting_feedback → researching 
 
 ## Limitations
 
-- State is in memory, so a restart or redeploy drops in-flight jobs. Finished reports remain in the browser's history. For durability, swap `InMemorySaver` for a Postgres checkpointer and move jobs to a database.
-- There is no authentication. Anyone with the URL can spend your Groq and Tavily credits; `MAX_ACTIVE_JOBS` caps concurrent runs, not usage. Add auth or rate limiting before sharing widely.
+- In-flight job state is in memory, so a restart or redeploy drops running jobs. Finished reports are safe in each user's Supabase history. For durability of running jobs, swap `InMemorySaver` for a Postgres checkpointer.
+- Sign-in is required, but any account can still spend your Groq and Tavily credits; `MAX_ACTIVE_JOBS` caps concurrent runs, not per-user usage. Add per-user rate limits (or restrict sign-ups in Supabase) before sharing widely.
 - On Groq's free tier, large panels at high depth can still hit tokens-per-minute limits. The API retries with back-off and reports a clear error if it still fails.
 - Output is AI-generated. Verify sources before relying on it.

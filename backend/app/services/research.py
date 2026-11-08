@@ -24,6 +24,7 @@ from app.schemas.research import (
     Source,
     StartResearchRequest,
 )
+from app.services.reports import NullReportStore, ReportRecord, ReportStore
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ def _utcnow() -> datetime:
 @dataclass
 class _Job:
     thread_id: str
+    user_id: str
     topic: str
     max_analysts: int
     max_num_turns: int
@@ -116,8 +118,10 @@ class ResearchService:
         max_active_jobs: int = 4,
         job_ttl: timedelta = timedelta(hours=3),
         max_concurrency: int | None = None,
+        report_store: ReportStore | None = None,
     ) -> None:
         self._graph = graph or build_graph(checkpointer=_build_checkpointer())
+        self._reports: ReportStore = report_store or NullReportStore()
         self._jobs: dict[str, _Job] = {}
         self._max_active_jobs = max_active_jobs
         self._job_ttl = job_ttl
@@ -129,12 +133,13 @@ class ResearchService:
 
     # ------------------------------------------------------------------ actions
 
-    async def start(self, request: StartResearchRequest) -> ResearchJob:
+    async def start(self, request: StartResearchRequest, *, user_id: str) -> ResearchJob:
         self._purge_expired()
         self._ensure_capacity()
 
         job = _Job(
             thread_id=uuid.uuid4().hex,
+            user_id=user_id,
             topic=request.topic,
             max_analysts=request.max_analysts,
             max_num_turns=request.max_num_turns,
@@ -155,8 +160,8 @@ class ResearchService:
         logger.info("Started job %s (%d analysts)", job.thread_id, job.max_analysts)
         return self._to_response(job)
 
-    async def resume(self, thread_id: str, feedback: str | None = None) -> ResearchJob:
-        job = self._get_job(thread_id)
+    async def resume(self, thread_id: str, feedback: str | None = None, *, user_id: str) -> ResearchJob:
+        job = self._get_job(thread_id, user_id)
 
         if job.status is not JobStatus.AWAITING_FEEDBACK:
             raise ResearchConflictError(f"Job is '{job.status.value}', expected 'awaiting_feedback'.")
@@ -177,8 +182,8 @@ class ResearchService:
         job.task = asyncio.create_task(self._run(job, Command(resume=cleaned)))
         return self._to_response(job)
 
-    async def cancel(self, thread_id: str) -> ResearchJob:
-        job = self._get_job(thread_id)
+    async def cancel(self, thread_id: str, *, user_id: str) -> ResearchJob:
+        job = self._get_job(thread_id, user_id)
         if job.status.is_terminal:
             return self._to_response(job)
 
@@ -190,11 +195,11 @@ class ResearchService:
         logger.info("Cancelled job %s", job.thread_id)
         return self._to_response(job)
 
-    def get(self, thread_id: str) -> ResearchJob:
-        return self._to_response(self._get_job(thread_id))
+    def get(self, thread_id: str, *, user_id: str) -> ResearchJob:
+        return self._to_response(self._get_job(thread_id, user_id))
 
     async def watch(
-        self, thread_id: str, *, heartbeat: float = 15.0, coalesce: float = 0.2
+        self, thread_id: str, *, user_id: str, heartbeat: float = 15.0, coalesce: float = 0.2
     ) -> AsyncIterator[ResearchJob | None]:
         """Yield a job snapshot on every change, or `None` as a keep-alive.
 
@@ -202,7 +207,7 @@ class ResearchService:
         The iterator ends once the job reaches a terminal status.
         """
 
-        job = self._get_job(thread_id)
+        job = self._get_job(thread_id, user_id)
         last_event_id = 0
         changed = True
 
@@ -231,6 +236,7 @@ class ResearchService:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+        await self._reports.aclose()
 
     # --------------------------------------------------------------- execution
 
@@ -322,10 +328,32 @@ class ResearchService:
                 job.status = JobStatus.RESEARCHING
             job.final_report = None
         else:
-            job.status = JobStatus.COMPLETED
             job.final_report = values.get("final_report") or None
+            await self._archive(job)
+            job.status = JobStatus.COMPLETED
             self._record(job, "status", "Report complete")
             logger.info("Completed job %s", job.thread_id)
+
+    async def _archive(self, job: _Job) -> None:
+        """Save the finished report to the owner's history; never fail the job over it."""
+
+        if not job.final_report:
+            return
+        record = ReportRecord(
+            user_id=job.user_id,
+            thread_id=job.thread_id,
+            topic=job.topic,
+            analysts=list(job.analysts),
+            sources=list(job.sources.values()),
+            final_report=job.final_report,
+            created_at=job.created_at,
+            completed_at=_utcnow(),
+        )
+        try:
+            await self._reports.save(record)
+        except Exception:  # noqa: BLE001 - the report is still shown to the user
+            logger.exception("Could not save report %s to history", job.thread_id)
+            self._record(job, "error", "The report could not be saved to your history")
 
     # ----------------------------------------------------------------- helpers
 
@@ -371,11 +399,12 @@ class ResearchService:
             if not job.running and job.updated_at < cutoff:
                 del self._jobs[thread_id]
 
-    def _get_job(self, thread_id: str) -> _Job:
-        try:
-            return self._jobs[thread_id]
-        except KeyError as exc:
-            raise ResearchNotFoundError(thread_id) from exc
+    def _get_job(self, thread_id: str, user_id: str) -> _Job:
+        job = self._jobs.get(thread_id)
+        # Someone else's job looks exactly like a missing one.
+        if job is None or job.user_id != user_id:
+            raise ResearchNotFoundError(thread_id)
+        return job
 
     def _config(self, thread_id: str) -> dict[str, Any]:
         config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}

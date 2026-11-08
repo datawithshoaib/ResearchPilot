@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/config";
+import { getSupabase } from "@/lib/supabase/client";
 
 import type { Health, ResearchJob, StartResearchInput } from "./types";
 
@@ -15,19 +16,35 @@ export class ApiError extends Error {
   get isNetwork() {
     return this.status === 0;
   }
+
+  /** The session is missing or expired; the user needs to sign in again. */
+  get isUnauthorized() {
+    return this.status === 401;
+  }
+}
+
+/** Current Supabase access token; supabase-js refreshes it when it is about to expire. */
+async function accessToken(): Promise<string | null> {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 type RequestOptions = RequestInit & { timeoutMs?: number };
 
 async function request<T>(path: string, { timeoutMs = 20_000, ...init }: RequestOptions = {}): Promise<T> {
   let response: Response;
+  const token = await accessToken();
 
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
       cache: "no-store",
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
-      headers: { "Content-Type": "application/json", ...init.headers },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
     });
   } catch {
     throw new ApiError("Can't reach the ResearchPilot API. It may be waking up — try again in a moment.", 0);
@@ -58,5 +75,11 @@ export const api = {
   resumeResearch: (threadId: string, feedback?: string | null) =>
     post<ResearchJob>(`/api/research/${threadId}/resume`, { feedback: feedback?.trim() || null }),
   cancelResearch: (threadId: string) => post<ResearchJob>(`/api/research/${threadId}/cancel`),
-  streamUrl: (threadId: string) => `${API_URL}/api/research/${threadId}/stream`,
+  /** EventSource cannot send headers, so the token rides along as a query parameter. */
+  streamUrl: async (threadId: string) => {
+    const url = new URL(`${API_URL}/api/research/${threadId}/stream`);
+    const token = await accessToken();
+    if (token) url.searchParams.set("access_token", token);
+    return url.toString();
+  },
 };

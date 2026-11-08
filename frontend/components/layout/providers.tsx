@@ -4,6 +4,8 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider, useTheme } from "next-themes";
 import { Toaster } from "sonner";
 
+import { AuthProvider } from "@/components/auth/auth-provider";
+
 function ThemedToaster() {
   const { resolvedTheme } = useTheme();
   return (
@@ -19,8 +21,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <MotionConfig reducedMotion="user">
-        {children}
-        <ThemedToaster />
+        <AuthProvider>
+          {children}
+          <ThemedToaster />
+        </AuthProvider>
       </MotionConfig>
     </ThemeProvider>
   );

@@ -170,32 +170,88 @@ def write_conclusion(state: ResearchGraphState) -> dict[str, str]:
     return {"conclusion": conclusion.content}
 
 
+_SOURCES_HEADER = re.compile(r"^#{2,3}\s*\**Sources\**\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
+_SOURCE_LINE = re.compile(r"^\s*(?:[-*]\s*)?\[(\d+)\]\s*(.+?)\s*$")
+_CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+_URL = re.compile(r"https?://\S+")
+
+
 def _split_sources(content: str) -> tuple[str, str | None]:
-    match = re.search(r"\n##\s+Sources\s*\n", content)
+    """Split markdown into (body, sources) at the first Sources header."""
+
+    match = _SOURCES_HEADER.search(content)
     if not match:
-        return content, None
+        return content.strip(), None
     body = content[: match.start()].strip()
     sources = content[match.end() :].strip()
     return body, sources or None
 
 
+def _source_key(entry: str) -> str:
+    """Identity of a source: its URL when present, else its normalized text."""
+
+    url = _URL.search(entry)
+    if url:
+        return url.group(0).rstrip(").,;>").rstrip("/").lower()
+    return " ".join(entry.lower().split())
+
+
+def _dedupe_sources(body: str, sources: str | None) -> tuple[str, list[str]]:
+    """Give every unique source one number and rewrite the body's citations to match."""
+
+    if not sources:
+        return body, []
+
+    entries: list[str] = []
+    number_for_key: dict[str, int] = {}
+    remap: dict[int, int] = {}
+    for line in sources.splitlines():
+        match = _SOURCE_LINE.match(line)
+        if not match:
+            continue
+        old_number, entry = int(match.group(1)), match.group(2).strip()
+        key = _source_key(entry)
+        if key not in number_for_key:
+            entries.append(entry)
+            number_for_key[key] = len(entries)
+        remap.setdefault(old_number, number_for_key[key])
+
+    if not entries:
+        return body, [line.strip() for line in sources.splitlines() if line.strip()]
+
+    def renumber(match: re.Match[str]) -> str:
+        numbers = [int(n) for n in re.split(r"\s*,\s*", match.group(1))]
+        if not all(n in remap for n in numbers):
+            return match.group(0)  # not a citation we know, e.g. a literal "[2024]"
+        unique = list(dict.fromkeys(remap[n] for n in numbers))
+        return "".join(f"[{n}]" for n in unique)
+
+    body = _CITATION.sub(renumber, body)
+    return body, [f"[{index}] {entry}" for index, entry in enumerate(entries, start=1)]
+
+
+def _strip_leading_header(content: str, *titles: str) -> str:
+    pattern = rf"^#{{1,3}}\s*(?:{'|'.join(map(re.escape, titles))})\s*\n"
+    return re.sub(pattern, "", content, count=1, flags=re.IGNORECASE).lstrip()
+
+
 def finalize_report(state: ResearchGraphState) -> dict[str, str]:
-    """Assemble the introduction, body, conclusion, and sources into the final report."""
+    """Assemble title + introduction, thematic body sections, conclusion, and one source list."""
 
-    content = (state.get("content") or "").strip()
-    if content.startswith("## Insights"):
-        content = content[len("## Insights") :].lstrip()
+    body = _strip_leading_header((state.get("content") or "").strip(), "Insights", "Report")
+    body, sources = _split_sources(body)
 
-    content, sources = _split_sources(content)
+    # Intro and conclusion should not carry their own source lists; drop any that slip in.
+    introduction, _ = _split_sources((state.get("introduction") or "").strip())
+    conclusion, _ = _split_sources((state.get("conclusion") or "").strip())
 
-    parts = [
-        part.strip()
-        for part in (state.get("introduction"), content, state.get("conclusion"))
-        if part and part.strip()
-    ]
-    final_report = "\n\n---\n\n".join(parts)
+    body, source_lines = _dedupe_sources(body, sources)
 
-    if sources:
-        final_report = f"{final_report}\n\n## Sources\n\n{sources}"
+    parts = [part for part in (introduction, body, conclusion) if part]
+    final_report = "\n\n".join(parts)
+
+    if source_lines:
+        # Two trailing spaces force markdown line breaks between entries.
+        final_report = f"{final_report}\n\n## Sources\n\n" + "  \n".join(source_lines)
 
     return {"final_report": final_report}

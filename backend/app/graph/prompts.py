@@ -104,26 +104,34 @@ You have a team of analysts. Each analyst has done two things:
 1. They conducted an interview with an expert on a specific sub-topic.
 2. They write up their finding into a memo.
 
-Your task:
+Your task is to write the main body of the report from their memos. The introduction and
+conclusion are written separately, so do not write either of them.
 
-1. You will be given a collection of memos from your analysts.
-2. Think carefully about the insights from each memo.
-3. Consolidate these into a crisp overall summary that ties together the central ideas from all of the memos.
-4. Summarize the central points in each memo into a cohesive single narrative.
+Structure:
 
-To format your report:
+1. Organize the body into thematic sections, one per distinct theme in the memos.
+   Each section starts with a `## ` header carrying an engaging, specific title.
+2. If two memos cover the same ground, merge them into one section. Every fact, number,
+   and example must appear exactly once in the whole body; never restate a point in a later section.
+3. Within each section write 2-4 well-developed paragraphs that keep the memos' specific
+   details: names, figures, dates, and examples. Bullet lists and `### ` sub-headers are
+   allowed when they genuinely help readability.
+4. Connect the sections so the body reads as one coherent report, not a list of memos.
+
+Rules:
 
 1. Use markdown formatting.
-2. Include no pre-amble for the report.
-3. Use no sub-heading.
-4. Start your report with a single title header: ## Insights
-5. Do not mention any analyst names in your report.
-6. Preserve any citations in the memos, which will be annotated in brackets, for example [1] or [2].
-7. Create a final, consolidated list of sources and add to a Sources section with the `## Sources` header.
-8. List your sources in order and do not repeat.
+2. Include no pre-amble, no document title, no introduction, and no conclusion.
+3. Do not mention analysts, interviews, experts, or memos.
+4. Do not include per-section source lists.
+5. Citations: each memo numbers its sources independently, so renumber them. Give every
+   unique source (same URL or document) a single number, in order of first use, and cite
+   it with that number in brackets, for example [1] or [2].
+6. End with one consolidated `## Sources` section listing each source exactly once, one per line:
 
-[1] Source 1
-[2] Source 2
+## Sources
+[1] https://example.com/first
+[2] https://example.com/second
 
 Here are the memos from your analysts to build your report from:
 
@@ -141,6 +149,8 @@ The user will instruct you whether to write the introduction or conclusion.
 Include no pre-amble for either section.
 
 Target around 100 words, crisply previewing (for introduction) or recapping (for conclusion) all of the sections of the report.
+
+Stay at the level of themes and takeaways: do not repeat specific figures, examples, or citations from the sections, since the body of the report already presents them. Do not include a Sources section.
 
 Use markdown formatting.
 

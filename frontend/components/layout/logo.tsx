@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Orbit mark: a core with two analysts in rotation. */
+/** Compass Lens mark: a magnifier (research) with a compass needle in the lens (pilot). */
 export function LogoMark({ className, spinning = false }: { className?: string; spinning?: boolean }) {
   return (
     <span
@@ -9,15 +9,15 @@ export function LogoMark({ className, spinning = false }: { className?: string; 
         className,
       )}
     >
-      <svg viewBox="0 0 32 32" className="size-[70%] text-white" fill="none">
-        <circle cx="16" cy="16" r="3.2" fill="currentColor" />
+      <svg viewBox="0 0 48 48" className="size-[70%] text-white" fill="none" aria-hidden="true">
+        <circle cx="21" cy="21" r="13.5" stroke="currentColor" strokeWidth="4" />
+        <line x1="31" y1="31" x2="41.5" y2="41.5" stroke="currentColor" strokeWidth="5.5" strokeLinecap="round" />
         <g
-          className={cn("origin-center", spinning && "animate-[spin_6s_linear_infinite]")}
-          style={{ transformBox: "fill-box" }}
+          className={cn(spinning && "animate-[spin_2.4s_ease-in-out_infinite]")}
+          style={{ transformBox: "view-box", transformOrigin: "21px 21px" }}
         >
-          <ellipse cx="16" cy="16" rx="12" ry="5.5" stroke="currentColor" strokeOpacity="0.7" strokeWidth="1.4" />
-          <circle cx="28" cy="16" r="2" fill="currentColor" />
-          <circle cx="4" cy="16" r="1.4" fill="currentColor" fillOpacity="0.8" />
+          <polygon points="28,14 23.2,23.2 18.8,18.8" fill="#8FF0FA" />
+          <polygon points="14,28 18.8,18.8 23.2,23.2" fill="currentColor" fillOpacity="0.55" />
         </g>
       </svg>
     </span>

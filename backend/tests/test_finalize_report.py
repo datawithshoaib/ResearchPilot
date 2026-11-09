@@ -15,7 +15,14 @@ def test_body_sections_sit_between_intro_and_conclusion():
     )
 
     assert "Insights" not in report
-    order = ["# Title", "## Introduction", "## Cheaper Retrieval", "## Sparse Experts", "## Conclusion", "## Sources"]
+    order = [
+        "# Title",
+        "## Introduction",
+        "## Cheaper Retrieval",
+        "## Sparse Experts",
+        "## Conclusion",
+        "## Sources",
+    ]
     positions = [report.index(heading) for heading in order]
     assert positions == sorted(positions)
 
